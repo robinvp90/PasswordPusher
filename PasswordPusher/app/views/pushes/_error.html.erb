@@ -1,0 +1,11 @@
+<% if push.errors.any? %>
+    <div class="alert alert-danger">
+        <div><%= n_("%{count} error prohibited this push from being saved:", "%{count} errors prohibited this push from being saved:", push.errors.count) % { count: push.errors.count } %></div>
+
+        <ul>
+        <% push.errors.full_messages.each do |error| %>
+            <li><%= error %></li>
+        <% end %>
+        </ul>
+    </div>
+<% end %>

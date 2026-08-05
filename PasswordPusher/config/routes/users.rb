@@ -1,0 +1,37 @@
+allowed_reg_routes = if Settings.disable_signups
+  %i[edit update destroy]
+else
+  %i[new create edit update destroy]
+end
+
+devise_for :users, skip: :registrations, controllers: {
+  sessions: "users/sessions",
+  passwords: "users/passwords",
+  unlocks: "users/unlocks",
+  confirmations: "users/confirmations",
+  registrations: "users/registrations",
+  omniauth_callbacks: "users/omniauth_callbacks"
+}
+
+devise_scope :user do
+  get "first_run", to: "users/first_runs#new", as: :first_run
+  post "first_run", to: "users/first_runs#create"
+
+  namespace :user, module: :users do
+    resource :two_factor, only: %i[show create destroy], controller: :two_factor do
+      get :backup_codes
+      get :verify
+    end
+  end
+
+  resource :registration,
+    only: allowed_reg_routes,
+    path: "users",
+    path_names: {new: "sign_up"},
+    controller: "users/registrations",
+    as: :user_registration do
+      get :cancel
+      get :token
+      delete :token, action: :regen_token
+    end
+end

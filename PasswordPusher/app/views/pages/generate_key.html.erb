@@ -1,0 +1,159 @@
+<% title(_('Generate Key')) %>
+
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-10 col-xl-9">
+
+      <header class="text-center mb-5">
+        <h1 class="h2 fw-bold mb-3">
+          <em class="bi bi-key me-2"></em><%= _('Encryption Key Generator') %>
+        </h1>
+        <p class="lead text-body-emphasis">
+          <%= _('Generate a secure encryption key for your self-hosted Password Pusher instance.') %>
+        </p>
+      </header>
+
+      <% new_master_key = Lockbox.generate_key %>
+
+      <section class="mb-5">
+        <h2 class="h5 fw-semibold mb-3">
+          <em class="bi bi-info-circle me-2 text-primary"></em><%= _('Why Use a Custom Key?') %>
+        </h2>
+        <p>
+          <%= _('Password Pusher encrypts all sensitive data in the database using a master encryption key. While a default key is provided for convenience, using your own unique key provides the highest level of security for your private instance.') %>
+        </p>
+      </section>
+
+      <section class="mb-5 p-4 bg-body-secondary rounded-3 border">
+        <h2 class="h5 fw-semibold mb-4">
+          <em class="bi bi-shield-lock me-2 text-success"></em><%= _('Your Generated Key') %>
+        </h2>
+
+        <div class="mb-4">
+          <label class="form-label fw-medium text-muted small text-uppercase"><%= _('Raw Encryption Key') %></label>
+          <div class="input-group" data-controller="copy">
+            <input class="form-control form-control-lg font-monospace bg-body" id="generated_key" value="<%= new_master_key %>" spellcheck="false" readonly="true" data-copy-target="payloadDiv">
+            <button id="copy-to-clipboard-button" class="btn btn-success" data-action="click->copy#miniCopyToClipboard" title="<%= _('Copy to Clipboard') %>">
+              <em class="bi bi-clipboard-check fs-5"></em>
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label fw-medium text-muted small text-uppercase"><%= _('Environment Variable Format') %></label>
+          <div class="input-group" data-controller="copy">
+            <input class="form-control form-control-lg font-monospace bg-body" id="env_key" value="PWPUSH_MASTER_KEY=<%= new_master_key %>" spellcheck="false" readonly="true" data-copy-target="payloadDiv">
+            <button id="copy-to-clipboard-button-2" class="btn btn-success" data-action="click->copy#miniCopyToClipboard" title="<%= _('Copy to Clipboard') %>">
+              <em class="bi bi-clipboard-check fs-5"></em>
+            </button>
+          </div>
+          <div class="form-text">
+            <%= _('Set this environment variable in your deployment configuration.') %>
+          </div>
+        </div>
+
+        <div class="text-center">
+          <a href="<%= page_path(id: 'generate_key') %>" class="btn btn-outline-primary">
+            <em class="bi bi-arrow-clockwise me-1"></em><%= _('Generate New Key') %>
+          </a>
+        </div>
+      </section>
+
+      <section class="mb-5">
+        <h2 class="h5 fw-semibold mb-3">
+          <em class="bi bi-lightbulb me-2 text-warning"></em><%= _('Important Notes') %>
+        </h2>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="card h-100 border-0 bg-body-tertiary">
+              <div class="card-body">
+                <h6 class="card-title fw-semibold">
+                  <em class="bi bi-check-circle text-success me-1"></em><%= _('Default Key Available') %>
+                </h6>
+                <p class="card-text small mb-0">
+                  <%= _('A default key is used if none is provided. This works but is less secure than a custom key.') %>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="card h-100 border-0 bg-body-tertiary">
+              <div class="card-body">
+                <h6 class="card-title fw-semibold">
+                  <em class="bi bi-shield-check text-primary me-1"></em><%= _('Reduce Risk') %>
+                </h6>
+                <p class="card-text small mb-0">
+                  <%= _('Using short push expirations (e.g., 1 day/1 view) reduces risk even with the default key.') %>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="card h-100 border-0 bg-body-tertiary">
+              <div class="card-body">
+                <h6 class="card-title fw-semibold">
+                  <em class="bi bi-trash text-danger me-1"></em><%= _('Data Deletion') %>
+                </h6>
+                <p class="card-text small mb-0">
+                  <%= _('Once a push expires, all encrypted data is permanently deleted from the database.') %>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="card h-100 border-0 bg-body-tertiary">
+              <div class="card-body">
+                <h6 class="card-title fw-semibold">
+                  <em class="bi bi-exclamation-triangle text-warning me-1"></em><%= _('Key Changes') %>
+                </h6>
+                <p class="card-text small mb-0">
+                  <%= _('Changing keys makes existing pushes unreadable. New pushes will work normally.') %>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="mb-5">
+        <h2 class="h5 fw-semibold mb-3">
+          <em class="bi bi-terminal me-2 text-secondary"></em><%= _('Command Line Alternative') %>
+        </h2>
+        <p>
+          <%= _('You can also generate keys from the command line in the application source:') %>
+        </p>
+        <div class="bg-dark text-light p-3 rounded-3 font-monospace small">
+          <div class="text-muted"># <%= _('In your Password Pusher directory') %></div>
+          <div>$ bundle install</div>
+          <div>$ rails console</div>
+          <div class="mt-2 text-success">> Lockbox.generate_key</div>
+          <div class="text-info"># => "<%= Lockbox.generate_key %>"</div>
+        </div>
+      </section>
+
+      <section class="mb-4">
+        <h2 class="h5 fw-semibold mb-3">
+          <em class="bi bi-book me-2 text-info"></em><%= _('Learn More') %>
+        </h2>
+        <p>
+          <%= _('For detailed configuration options and deployment strategies, see the') %>
+          <a href="https://docs.pwpush.com/docs/config-strategies/" target="_blank" rel="noopener noreferrer" class="fw-medium">
+            <%= _('Configuration Documentation') %> <em class="bi bi-box-arrow-up-right small"></em>
+          </a>.
+        </p>
+      </section>
+
+      <footer class="pt-4 mt-4 border-top text-center">
+        <p class="text-muted small mb-0">
+          <em class="bi bi-lock-fill me-1"></em>
+          <%= _('Keys are generated server-side using cryptographically secure random bytes.') %>
+        </p>
+      </footer>
+
+    </div>
+  </div>
+</div>

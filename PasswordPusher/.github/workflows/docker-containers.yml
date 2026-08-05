@@ -1,0 +1,264 @@
+name: Docker Container Builds
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+  workflow_dispatch:
+    inputs:
+      dockerPush:
+        description: 'Push image to docker hub?'
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    # * is a special character in YAML so you have to quote this string
+    # Run every day at 5:24 UTC - build 'nightly' docker containers
+    - cron: "24 17 * * *"
+
+  pull_request:
+    types:
+      - labeled
+
+permissions:
+  contents: read
+
+env:
+  DOCKER_PUSH: true
+jobs:
+  docker-configured:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        run: |
+          if [ -n "${DOCKER_USERNAME}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  pwpush-container:
+    needs: docker-configured
+    if: needs.docker-configured.outputs.enabled == 'true' && ((github.event.label && github.event.label.name == 'docker') || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    steps:
+      - id: campfire-configured
+        env:
+          CAMPFIRE_MESSAGES_URL: ${{ secrets.CAMPFIRE_MESSAGES_URL }}
+        run: |
+          if [ -n "${CAMPFIRE_MESSAGES_URL}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Populate Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/pwpush
+          tags: |
+            type=ref,event=pr,format=pr-{{ref}}-docker
+            type=match,pattern=stable
+            type=schedule,pattern=nightly
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ./containers/docker/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: |
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/pwpush:buildcache
+            type=gha
+          cache-to: |
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/pwpush:buildcache,mode=max,ignore-error=${{env.DOCKER_PUSH == 'false'}}
+            type=gha,mode=max
+
+      - name: Post job failure details to Campfire
+        if: failure() && steps.campfire-configured.outputs.configured == 'true' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        uses: shane-lamb/campfire-notify-action@df63cf73810147306276e281bedccf71c1519caf # v1.1.6
+        with:
+          messages_url: ${{ secrets.CAMPFIRE_MESSAGES_URL }}
+          template: job_failed
+
+
+  public-gateway-container:
+    needs: [docker-configured, pwpush-container]
+    if: needs.docker-configured.outputs.enabled == 'true' && ((github.event.label && github.event.label.name == 'docker') || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    steps:
+      - id: campfire-configured
+        env:
+          CAMPFIRE_MESSAGES_URL: ${{ secrets.CAMPFIRE_MESSAGES_URL }}
+        run: |
+          if [ -n "${CAMPFIRE_MESSAGES_URL}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+        with:
+          image: tonistiigi/binfmt:master
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Populate Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/pwpush-public-gateway
+          tags: |
+            type=ref,event=pr,format=pr-{{ref}}-docker
+            type=match,pattern=stable
+            type=schedule,pattern=nightly
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ./containers/docker/Dockerfile.public-gateway
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: |
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/pwpush-public-gateway:buildcache
+            type=gha
+          cache-to: |
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/pwpush-public-gateway:buildcache,mode=max,ignore-error=${{env.DOCKER_PUSH == 'false'}}
+            type=gha,mode=max
+
+      - name: Post job failure details to Campfire
+        if: failure() && steps.campfire-configured.outputs.configured == 'true' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        uses: shane-lamb/campfire-notify-action@df63cf73810147306276e281bedccf71c1519caf # v1.1.6
+        with:
+          messages_url: ${{ secrets.CAMPFIRE_MESSAGES_URL }}
+          template: job_failed
+
+  worker-container:
+    needs: [docker-configured, pwpush-container]
+    if: needs.docker-configured.outputs.enabled == 'true' && ((github.event.label && github.event.label.name == 'docker') || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    steps:
+      - id: campfire-configured
+        env:
+          CAMPFIRE_MESSAGES_URL: ${{ secrets.CAMPFIRE_MESSAGES_URL }}
+        run: |
+          if [ -n "${CAMPFIRE_MESSAGES_URL}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+        with:
+          image: tonistiigi/binfmt:master
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Populate Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/pwpush-worker
+          tags: |
+            type=ref,event=pr,format=pr-{{ref}}-docker
+            type=match,pattern=stable
+            type=schedule,pattern=nightly
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ./containers/docker/Dockerfile.worker
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: |
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/pwpush-worker:buildcache
+            type=gha
+          cache-to: |
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/pwpush-worker:buildcache,mode=max,ignore-error=${{env.DOCKER_PUSH == 'false'}}
+            type=gha,mode=max
+
+      - name: Post job failure details to Campfire
+        if: failure() && steps.campfire-configured.outputs.configured == 'true' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        uses: shane-lamb/campfire-notify-action@df63cf73810147306276e281bedccf71c1519caf # v1.1.6
+        with:
+          messages_url: ${{ secrets.CAMPFIRE_MESSAGES_URL }}
+          template: job_failed

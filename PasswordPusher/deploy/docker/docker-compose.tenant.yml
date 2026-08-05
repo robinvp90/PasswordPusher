@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  tenant-control-plane:
+    image: ghcr.io/your-org/tenant-control-plane:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      TENANT_SSO_PROVIDER: entra-id
+      TENANT_ENFORCE_MFA: "true"
+      TENANT_AUDIT_LOGS: "true"
+      TENANT_ISOLATION_MODE: per-tenant-instance
+      PWPUSH_API_BASE_URL: http://pwpush:5100
+      PWPUSH_API_TOKEN: ${PWPUSH_API_TOKEN}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+    ports:
+      - "8080:8080"
+    volumes:
+      - tenant-control-storage:/var/lib/tenant-control-plane
+
+  pwpush:
+    image: docker.io/pglombardo/pwpush:latest
+    restart: unless-stopped
+    environment:
+      TLS_DOMAIN: ${TLS_DOMAIN}
+      PWPUSH_MASTER_KEY: ${PWPUSH_MASTER_KEY}
+      PWP__REQUIRE_MFA: "true"
+      PWP__FILES__STORAGE: local
+      PWP__LOG_LEVEL: warn
+      PWP__LOG_TO_STDOUT: "true"
+    ports:
+      - "443:443"
+    volumes:
+      - pwpush-storage:/opt/PasswordPusher/storage
+
+volumes:
+  tenant-control-storage:
+  pwpush-storage:

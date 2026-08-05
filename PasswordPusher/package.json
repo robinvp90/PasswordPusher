@@ -1,0 +1,26 @@
+{
+  "name": "PasswordPusher",
+  "private": true,
+  "dependencies": {
+    "@popperjs/core": "^2.11.8",
+    "autoprefixer": "^10.4.20",
+    "bootstrap": "^5.3.3",
+    "bootstrap-icons": "^1.11.3",
+    "flag-icons": "^7.2.3",
+    "nodemon": "^3.1.9",
+    "postcss": "^8.4.49",
+    "postcss-cli": "^11.0.0",
+    "sass": "1.99.0"
+  },
+  "scripts": {
+    "set:theme": "node ./set_theme.js",
+    "build:css:single": "node ./build_themes.js --single",
+    "build:css:all": "node ./build_themes.js",
+    "build:css": "yarn build:css:all",
+    "build:css:watch": "nodemon --watch app/assets/stylesheets --watch vendor/stylesheets --ignore app/assets/stylesheets/themes/_selected.scss -e scss,css --exec \"yarn build:css:single\""
+  },
+  "browserslist": [
+    "defaults"
+  ],
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}
